@@ -2,6 +2,8 @@ import cv2
 import mediapipe as mp
 import pyautogui
 import os
+import math
+import time
 
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
@@ -17,6 +19,14 @@ hands = mp_hands.Hands(
 # Open webcam
 cap = cv2.VideoCapture(0)
 
+last_middle = 0
+last_left = 0
+last_scrollUp = 0
+last_scrollDown = 0
+
+cooldown = 0.5
+
+
 while cap.isOpened():
     success, frame = cap.read()
     if not success:
@@ -31,18 +41,44 @@ while cap.isOpened():
     # Process hand
     results = hands.process(rgb_frame)
 
+    current_time = time.time()
+
     if results.multi_hand_landmarks:
-        for hand_landmarks in results.multi_hand_landmarks:
-            mp_draw.draw_landmarks(
-                frame,
-                hand_landmarks,
-                mp_hands.HAND_CONNECTIONS
-            )
+        landmarks = results.multi_hand_landmarks[0].landmark
+        index_tip = landmarks[8]
+        index_joint = landmarks[6]
+        if index_tip.y > index_joint.y:
+            pyautogui.middleClick()
+            last_middle = current_time
 
-    cv2.imshow("Hand Landmarks", frame)
+        thumb = landmarks[4]
+        index = landmarks[8]
+        h,w,_=frame.shape
+        thumb_x , thumb_y = int(thumb.x*w), int(thumb.y*h)
+        index_x , index_y = int(index.x*w), int(index.y*h)
 
-    if cv2.waitKey(1) & 0xFF == 27:
-        break
+        distance = math.hypot(index_x - thumb_x , index_y - thumb_y)
+        if distance < 40:
+            pyautogui.leftClick()
+            last_left = current_time
 
-cap.release()
-cv2.destroyAllWindows()
+    thumb_up = landmarks[4].y < landmarks[3].y
+    index_up = landmarks[8].y < landmarks[6].y
+    middle_up = landmarks[12].y < landmarks[10].y
+    ring_up = landmarks[16].y < landmarks[14].y
+    pinky_up = landmarks[20].y < landmarks[18].y
+    if thumb_up and index_up and middle_up and ring_up and pinky_up:
+          if current_time - last_scrollUp > cooldown:
+           pyautogui.scroll(100)
+           last_scrollUp = current_time
+
+    thumb_down = landmarks[4].y > landmarks[3].y
+    index_down = landmarks[8].y > landmarks[6].y
+    middle_down = landmarks[12].y > landmarks[10].y
+    ring_down = landmarks[16].y > landmarks[14].y
+    pinky_down = landmarks[20].y > landmarks[18].y
+    if thumb_up and index_down and middle_down and ring_down and pinky_down:
+          if current_time - last_scrollDown > cooldown:
+           pyautogui.scroll(100)
+           last_scrollDown = current_time
+
