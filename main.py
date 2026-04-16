@@ -82,3 +82,9 @@ while cap.isOpened():
            pyautogui.scroll(100)
            last_scrollDown = current_time
 
+          index_1 = landmarks[8].y < landmarks[6].y
+          middle_2 = landmarks[12].y < landmarks[10].y
+          ring_down = landmarks[16].y > landmarks[14].y
+    if index_1 and middle_2 and ring_down:
+        pyautogui.dragTo(500, 300, duration=1)
+
