@@ -1,90 +1,129 @@
 import cv2
 import mediapipe as mp
 import pyautogui
-import os
 import math
 import time
 
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
 
-# Hand detector
 hands = mp_hands.Hands(
     model_complexity=0,
-    max_num_hands=2,
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5
+    max_num_hands=1,
+    min_detection_confidence=0.7,
+    min_tracking_confidence=0.7
 )
 
-# Open webcam
 cap = cv2.VideoCapture(0)
+screen_w, screen_h = pyautogui.size()
+cam_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+cam_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-last_middle = 0
-last_left = 0
-last_scrollUp = 0
-last_scrollDown = 0
+pyautogui.FAILSAFE = False
 
 cooldown = 0.5
+last_action = {
+    "middle": 0,
+    "left": 0,
+    "right": 0,
+    "scroll_up": 0,
+    "scroll_down": 0,
+    "drag": 0,
+    "double": 0
+}
 
+prev_x, prev_y = 0, 0
+smooth = 5
+
+def dist(p1, p2):
+    return math.hypot(p1.x - p2.x, p1.y - p2.y)
 
 while cap.isOpened():
     success, frame = cap.read()
     if not success:
         break
 
-    # Mirror effect
     frame = cv2.flip(frame, 1)
-
-    # Convert BGR to RGB
-    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-    # Process hand
-    results = hands.process(rgb_frame)
-
-    current_time = time.time()
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    results = hands.process(rgb)
+    now = time.time()
 
     if results.multi_hand_landmarks:
         landmarks = results.multi_hand_landmarks[0].landmark
-        index_tip = landmarks[8]
-        index_joint = landmarks[6]
-        if index_tip.y > index_joint.y:
-            pyautogui.middleClick()
-            last_middle = current_time
+        mp_draw.draw_landmarks(frame, results.multi_hand_landmarks[0], mp_hands.HAND_CONNECTIONS)
 
-        thumb = landmarks[4]
-        index = landmarks[8]
-        h,w,_=frame.shape
-        thumb_x , thumb_y = int(thumb.x*w), int(thumb.y*h)
-        index_x , index_y = int(index.x*w), int(index.y*h)
+        ix = int(landmarks[8].x * cam_w)
+        iy = int(landmarks[8].y * cam_h)
 
-        distance = math.hypot(index_x - thumb_x , index_y - thumb_y)
-        if distance < 40:
-            pyautogui.leftClick()
-            last_left = current_time
+        mouse_x = int(landmarks[8].x * screen_w)
+        mouse_y = int(landmarks[8].y * screen_h)
 
-    thumb_up = landmarks[4].y < landmarks[3].y
-    index_up = landmarks[8].y < landmarks[6].y
-    middle_up = landmarks[12].y < landmarks[10].y
-    ring_up = landmarks[16].y < landmarks[14].y
-    pinky_up = landmarks[20].y < landmarks[18].y
-    if thumb_up and index_up and middle_up and ring_up and pinky_up:
-          if current_time - last_scrollUp > cooldown:
-           pyautogui.scroll(100)
-           last_scrollUp = current_time
+        curr_x = prev_x + (mouse_x - prev_x) / smooth
+        curr_y = prev_y + (mouse_y - prev_y) / smooth
+        pyautogui.moveTo(curr_x, curr_y)
+        prev_x, prev_y = curr_x, curr_y
 
-    thumb_down = landmarks[4].y > landmarks[3].y
-    index_down = landmarks[8].y > landmarks[6].y
-    middle_down = landmarks[12].y > landmarks[10].y
-    ring_down = landmarks[16].y > landmarks[14].y
-    pinky_down = landmarks[20].y > landmarks[18].y
-    if thumb_up and index_down and middle_down and ring_down and pinky_down:
-          if current_time - last_scrollDown > cooldown:
-           pyautogui.scroll(100)
-           last_scrollDown = current_time
+        cv2.circle(frame, (ix, iy), 8, (0, 255, 0), -1)
 
-          index_1 = landmarks[8].y < landmarks[6].y
-          middle_2 = landmarks[12].y < landmarks[10].y
-          ring_down = landmarks[16].y > landmarks[14].y
-    if index_1 and middle_2 and ring_down:
-        pyautogui.dragTo(500, 300, duration=1)
+        pinch = dist(landmarks[4], landmarks[8])
 
+        if pinch < 0.02:
+            if now - last_action["double"] > cooldown:
+                pyautogui.doubleClick()
+                last_action["double"] = now
+                last_action["left"] = now
+        elif pinch < 0.04:
+            if now - last_action["left"] > cooldown:
+                pyautogui.click()
+                last_action["left"] = now
+
+        if dist(landmarks[8], landmarks[12]) < 0.04:
+            if now - last_action["right"] > cooldown:
+                pyautogui.rightClick()
+                last_action["right"] = now
+
+        if landmarks[8].y < landmarks[6].y and landmarks[12].y > landmarks[10].y:
+            if now - last_action["middle"] > cooldown:
+                pyautogui.middleClick()
+                last_action["middle"] = now
+
+        fingers_up = (
+            landmarks[4].y < landmarks[3].y and
+            landmarks[8].y < landmarks[6].y and
+            landmarks[12].y < landmarks[10].y and
+            landmarks[16].y < landmarks[14].y and
+            landmarks[20].y < landmarks[18].y
+        )
+
+        if fingers_up and now - last_action["scroll_up"] > cooldown:
+            pyautogui.scroll(120)
+            last_action["scroll_up"] = now
+
+        fingers_down = (
+            landmarks[4].y > landmarks[3].y and
+            landmarks[8].y > landmarks[6].y and
+            landmarks[12].y > landmarks[10].y and
+            landmarks[16].y > landmarks[14].y and
+            landmarks[20].y > landmarks[18].y
+        )
+
+        if fingers_down and now - last_action["scroll_down"] > cooldown:
+            pyautogui.scroll(-120)
+            last_action["scroll_down"] = now
+
+        if (
+            landmarks[8].y < landmarks[6].y and
+            landmarks[12].y < landmarks[10].y and
+            landmarks[16].y > landmarks[14].y
+        ):
+            if now - last_action["drag"] > cooldown:
+                pyautogui.dragTo(mouse_x + 150, mouse_y, duration=0.2)
+                last_action["drag"] = now
+
+    cv2.imshow("Gesture Control", frame)
+
+    if cv2.waitKey(1) & 0xFF == 27:
+        break
+
+cap.release()
+cv2.destroyAllWindows()
