@@ -1,8 +1,8 @@
 import cv2
 import mediapipe as mp
 import pyautogui
-import math
-import time
+import math #math library to calculate the distance
+import time #time library to track the time of every action
 
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
@@ -21,8 +21,8 @@ cam_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
 pyautogui.FAILSAFE = False
 
-cooldown = 0.5
-last_action = {
+cooldown = 0.5 #minimum time between two consectutive action
+last_action = { #Intialization of timestamp of every action
     "middle": 0,
     "left": 0,
     "right": 0,
@@ -46,25 +46,26 @@ while cap.isOpened():
     frame = cv2.flip(frame, 1)
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = hands.process(rgb)
-    now = time.time()
+    now = time.time() //currnet timestamp
 
     if results.multi_hand_landmarks:
         landmarks = results.multi_hand_landmarks[0].landmark
         mp_draw.draw_landmarks(frame, results.multi_hand_landmarks[0], mp_hands.HAND_CONNECTIONS)
-
-        ix = int(landmarks[8].x * cam_w)
-        iy = int(landmarks[8].y * cam_h)
-
+ #Getting the fingertip position on camera
+        ix = int(landmarks[8].x * cam_w) 
+        iy = int(landmarks[8].y * cam_h) 
+#Mapping on the fingertip position on screen
         mouse_x = int(landmarks[8].x * screen_w)
         mouse_y = int(landmarks[8].y * screen_h)
-
+#smoothing the mouse movement
         curr_x = prev_x + (mouse_x - prev_x) / smooth
         curr_y = prev_y + (mouse_y - prev_y) / smooth
+#update the previous position
         pyautogui.moveTo(curr_x, curr_y)
         prev_x, prev_y = curr_x, curr_y
 
-        cv2.circle(frame, (ix, iy), 8, (0, 255, 0), -1)
-
+        cv2.circle(frame, (ix, iy), 8, (0, 255, 0), -1) #greencircle on index finger
+#All the actions required
         pinch = dist(landmarks[4], landmarks[8])
 
         if pinch < 0.02:
